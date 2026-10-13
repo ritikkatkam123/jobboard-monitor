@@ -27,6 +27,17 @@ export interface ScanError {
   httpStatus: number | null;
 }
 
+/** One retry of a page navigation after a transient failure. */
+export interface RetryRecord {
+  page: number;
+  /** The attempt that failed (1 = first try). */
+  attempt: number;
+  category: ErrorCategory;
+  httpStatus: number | null;
+  delayMs: number;
+  reason: string;
+}
+
 export interface RejectedListing {
   reason: string;
   raw: RawJobListing;
@@ -50,6 +61,8 @@ export interface CompanyScanResult {
   pagesVisited: number;
   duplicateCount: number;
   durationMs: number;
+  /** Every retry performed during this company's scan (empty when none were needed). */
+  retries: RetryRecord[];
   listings: JobListing[];
   rejected: RejectedListing[];
   warnings: string[];

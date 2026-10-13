@@ -41,6 +41,12 @@ export const settingsSchema = z.strictObject({
   navigationTimeoutMs: z.number().int().min(1000).max(120_000).default(30_000),
   /** Upper bound on pages per board, so a pagination bug cannot loop forever. */
   maxPagesPerBoard: z.number().int().min(1).max(200).default(40),
+  /** Retries per page for transient failures (timeouts, network errors, 408, 5xx). */
+  maxRetries: z.number().int().min(0).max(5).default(2),
+  /** First retry waits about this long; each further retry doubles it (capped at 30 s). */
+  retryBaseDelayMs: z.number().int().min(100).max(30_000).default(2000),
+  /** A 429/5xx Retry-After longer than this is treated as "blocked", not waited out. */
+  maxRetryAfterMs: z.number().int().min(0).max(300_000).default(60_000),
   outputDir: z.string().min(1).default('output'),
   /** Snapshots (tracking state). Kept apart from reports so it can be persisted separately. */
   stateDir: z.string().min(1).default('state'),

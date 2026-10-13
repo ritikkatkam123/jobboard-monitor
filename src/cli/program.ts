@@ -2,7 +2,8 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import { ConfigError, DEFAULT_CONFIG_PATH, loadConfig } from '../config/load.js';
 import { createLogger, createRunId, LOG_LEVELS, type LogLevel } from '../logging/logger.js';
 import { formatRunSummary } from '../reporting/console.js';
-import { writeRunJson } from '../reporting/json.js';
+import { ReportNotFoundError, readLatestRun, writeReports } from '../reporting/write.js';
+import { runDemo } from '../demo/run-demo.js';
 import {
   runScan as defaultRunScan,
   type RunScanOptions,
@@ -45,6 +46,7 @@ interface ScanOpts {
   outputDir?: string;
   stateDir?: string;
   dryRun?: boolean;
+  trace?: boolean;
 }
 
 const collect = (value: string, previous: string[]) => [...previous, value];
@@ -119,6 +121,7 @@ export function buildProgram(deps: CliDeps, setExitCode: (code: number) => void)
     .option('--output-dir <dir>', 'override settings.outputDir from the config')
     .option('--state-dir <dir>', 'override settings.stateDir (snapshot location) from the config')
     .option('--dry-run', 'detect changes but do not save snapshots')
+    .option('--trace', 'record a Playwright trace and keep it for companies that fail')
     .action(async (_opts: unknown, cmd: Command) => {
       const opts = cmd.optsWithGlobals<GlobalOpts & ScanOpts>();
       const config = await loadConfig(opts.config);
@@ -133,14 +136,50 @@ export function buildProgram(deps: CliDeps, setExitCode: (code: number) => void)
         runId,
         logger: createLogger(opts.logLevel),
         dryRun: opts.dryRun === true,
+        trace: opts.trace === true,
       });
-      const jsonPath = await writeRunJson(config.settings.outputDir, run);
-      io.out(formatRunSummary(run, jsonPath));
+      const paths = await writeReports(config.settings.outputDir, run);
+      io.out(formatRunSummary(run, paths));
       // A snapshot that could not be read or written means tracking failed for that company.
       const allOk = run.companies.every(
         (c) => c.status === 'SUCCESS' && c.tracking.snapshotAction !== 'ERROR',
       );
       setExitCode(allOk ? EXIT.OK : EXIT.RUN_UNSUCCESSFUL);
+    });
+
+  program
+    .command('report')
+    .description('Show the most recent scan summary and where its reports are')
+    .option('--latest', 'use the most recent completed scan (currently the only mode)')
+    .option('--output-dir <dir>', 'override settings.outputDir from the config')
+    .action(async (_opts: unknown, cmd: Command) => {
+      const opts = cmd.optsWithGlobals<GlobalOpts & { latest?: boolean; outputDir?: string }>();
+      if (opts.latest !== true) throw new UsageError('Specify --latest (e.g. "report --latest")');
+      const outputDir = opts.outputDir ?? (await loadConfig(opts.config)).settings.outputDir;
+      const { run, paths } = await readLatestRun(outputDir);
+      io.out(formatRunSummary(run, paths));
+      setExitCode(EXIT.OK);
+    });
+
+  program
+    .command('demo')
+    .description('Run the full pipeline offline against bundled fictional pages (no network)')
+    .option(
+      '--output-dir <dir>',
+      'where to write demo output (a "demo" folder is created inside)',
+      'output',
+    )
+    .action(async (_opts: unknown, cmd: Command) => {
+      const opts = cmd.optsWithGlobals<GlobalOpts & { outputDir: string }>();
+      const { run, paths } = await runDemo({
+        outputDir: opts.outputDir,
+        logger: createLogger(opts.logLevel),
+      });
+      io.out(formatRunSummary(run, paths));
+      io.out(
+        'This was a DEMO with fictional data. Initech is blocked on purpose to show failure handling.\n',
+      );
+      setExitCode(EXIT.OK);
     });
 
   return program;
@@ -165,7 +204,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       for (const issue of err.issues) deps.io.err(`  - ${issue}\n`);
       return EXIT.USAGE;
     }
-    if (err instanceof UsageError) {
+    if (err instanceof UsageError || err instanceof ReportNotFoundError) {
       deps.io.err(`Error: ${err.message}\n`);
       return EXIT.USAGE;
     }

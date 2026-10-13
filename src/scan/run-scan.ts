@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { BrowserContext } from 'playwright';
 import { collectCompany, sourceUrlFor } from '../adapters/registry.js';
 import { createScanContext, launchBrowser } from '../browser/browser.js';
+import { HostThrottle } from '../browser/throttle.js';
 import { filterListings, type ListingFilter } from '../core/filter.js';
 import type { Logger } from '../logging/logger.js';
 import type { AppConfig, CompanyConfig } from '../schemas/config.js';
@@ -33,10 +34,12 @@ export interface CompanyRunResult extends CompanyScanResult {
   tracking: CompanyTracking;
 }
 
+export type DataSource = 'live' | 'demo';
+
 export interface RunResult {
   runId: string;
-  /** `live` = collected from real sites in this run. */
-  dataSource: 'live';
+  /** `live` = collected from real sites; `demo` = bundled fictional fixture pages. */
+  dataSource: DataSource;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -59,10 +62,15 @@ export interface RunScanOptions {
   logger: Logger;
   /** Compute changes but never write snapshots. */
   dryRun?: boolean;
+  /** Defaults to `live`. Only the offline demo sets `demo`. */
+  dataSource?: DataSource;
+  /** Record a Playwright trace per company and keep it when that company fails. */
+  trace?: boolean;
   /** Override for tests; defaults to launching Chromium. */
   openContext?: () => Promise<{ context: BrowserContext; close: () => Promise<void> }>;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
+  random?: () => number;
 }
 
 async function defaultOpenContext() {
@@ -84,6 +92,7 @@ function crashResult(company: CompanyConfig, err: unknown, durationMs: number): 
     pagesVisited: 0,
     duplicateCount: 0,
     durationMs,
+    retries: [],
     listings: [],
     rejected: [],
     warnings: [],
@@ -94,6 +103,24 @@ function crashResult(company: CompanyConfig, err: unknown, durationMs: number): 
     },
     diagnostics: [],
   };
+}
+
+/** Keep the trace only for companies that did not succeed; discard it otherwise. */
+async function finishTraceChunk(
+  context: BrowserContext,
+  scan: CompanyScanResult,
+  diagnosticsDir: string,
+  log: Logger,
+): Promise<CompanyScanResult> {
+  const keep = scan.status !== 'SUCCESS';
+  const path = join(diagnosticsDir, `${scan.companyId}-trace.zip`);
+  try {
+    await context.tracing.stopChunk(keep ? { path } : {});
+  } catch (err) {
+    log.warn({ companyId: scan.companyId, err }, 'could not save trace');
+    return scan;
+  }
+  return keep ? { ...scan, diagnostics: [...scan.diagnostics, path] } : scan;
 }
 
 export function summarize(
@@ -132,6 +159,8 @@ export function summarize(
 export async function runScan(options: RunScanOptions): Promise<RunResult> {
   const now = options.now ?? (() => new Date());
   const started = now();
+  // Timestamps come from `now` (injectable); duration always uses a real monotonic timer.
+  const timerStart = performance.now();
   const observedAt = started.toISOString();
   const log = options.logger.child({ runId: options.runId });
   const diagnosticsDir = join(options.config.settings.outputDir, 'diagnostics', options.runId);
@@ -139,10 +168,15 @@ export async function runScan(options: RunScanOptions): Promise<RunResult> {
   log.info({ companies: options.companies.map((c) => c.id) }, 'scan started');
   const { context, close } = await (options.openContext ?? defaultOpenContext)();
   const { settings } = options.config;
+  // One throttle for the whole run: spacing also applies between companies on the same host.
+  const throttle = new HostThrottle(settings.requestDelayMs, () => Date.now(), options.sleep);
+  const tracing = options.trace === true;
   const results: CompanyRunResult[] = [];
   try {
+    if (tracing) await context.tracing.start({ screenshots: true, snapshots: true });
     for (const company of options.companies) {
       const t0 = Date.now();
+      if (tracing) await context.tracing.startChunk({ title: company.id });
       let scan: CompanyScanResult;
       try {
         scan = await collectCompany(company, {
@@ -151,12 +185,15 @@ export async function runScan(options: RunScanOptions): Promise<RunResult> {
           observedAt,
           diagnosticsDir,
           logger: log,
+          throttle,
           ...(options.sleep ? { sleep: options.sleep } : {}),
+          ...(options.random ? { random: options.random } : {}),
         });
       } catch (err) {
         log.error({ companyId: company.id, err }, 'adapter crashed');
         scan = crashResult(company, err, Date.now() - t0);
       }
+      if (tracing) scan = await finishTraceChunk(context, scan, diagnosticsDir, log);
       const tracked = await trackCompany(scan, {
         stateDir: settings.stateDir,
         runId: options.runId,
@@ -168,6 +205,7 @@ export async function runScan(options: RunScanOptions): Promise<RunResult> {
       results.push({ ...tracked.scan, tracking: tracked.tracking });
     }
   } finally {
+    if (tracing) await context.tracing.stop().catch(() => undefined);
     await close();
   }
 
@@ -183,10 +221,10 @@ export async function runScan(options: RunScanOptions): Promise<RunResult> {
   const finished = now();
   const result: RunResult = {
     runId: options.runId,
-    dataSource: 'live',
+    dataSource: options.dataSource ?? 'live',
     startedAt: observedAt,
     finishedAt: finished.toISOString(),
-    durationMs: finished.getTime() - started.getTime(),
+    durationMs: Math.round(performance.now() - timerStart),
     filters: options.filter,
     summary: summarize(results, matched.length, excludedCount),
     dryRun: options.dryRun ?? false,

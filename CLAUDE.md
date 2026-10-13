@@ -17,6 +17,7 @@ npm test                       # unit + integration
 npm run test:live              # OPT-IN real-site smoke test (network)
 npm run check                  # lint + format:check + typecheck + all deterministic tests
 npm run monitor -- --help      # CLI
+npm run monitor -- demo        # offline demo with fictional data (regenerates README examples)
 ```
 
 ## Conventions

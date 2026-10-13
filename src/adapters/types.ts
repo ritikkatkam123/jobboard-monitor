@@ -1,4 +1,5 @@
 import type { BrowserContext } from 'playwright';
+import type { HostThrottle } from '../browser/throttle.js';
 import type { Logger } from '../logging/logger.js';
 import type { CompanyConfig, Settings } from '../schemas/config.js';
 import type { CompanyScanResult } from '../schemas/result.js';
@@ -11,8 +12,12 @@ export interface AdapterRunOptions {
   /** Where to save screenshots/HTML on failure; null disables diagnostics. */
   diagnosticsDir: string | null;
   logger: Logger;
+  /** Shared across the run so spacing applies between companies on the same host too. */
+  throttle: HostThrottle;
   /** Injectable so tests do not have to wait for real delays. */
   sleep?: (ms: number) => Promise<void>;
+  /** Jitter source for retry backoff; injectable for deterministic tests. */
+  random?: () => number;
 }
 
 /**

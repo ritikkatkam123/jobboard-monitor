@@ -89,15 +89,15 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 
 ## 5. Phases
 
-**Status:** Phases 0–2 complete (2026-10-12). Phase 3 is next.
+**Status:** Phases 0–4 complete (2026-10-13). Phase 5 is next.
 
 | Phase | Scope                                                                                                                                             | Exit criteria                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | **0** | Tooling: TS strict, ESLint, Prettier, Vitest, Playwright Test, scripts, `.gitignore`, plan, `CLAUDE.md`                                           | `lint`, `format:check`, `typecheck`, empty test runs succeed       |
 | **1** | Vertical slice: config → Greenhouse Playwright adapter → normalization/identity/dedup/filter → JSON run output → `scan` and `validate-config` CLI | Unit + mocked integration tests pass; real scan of one board works |
 | **2** | Snapshots + change detection (`NEW`, `UPDATED`, `POSSIBLY_REMOVED`, `REMOVED`), history, atomic writes, partial-failure isolation                 | Tests 7–12, 16, 17, 23                                             |
-| 3     | Reliability: bounded retries/backoff for transient errors, 429 + `Retry-After`, per-host spacing/concurrency, traces on failure                   | Tests 14, 15                                                       |
-| 4     | Reports: CSV (formula-injection safe), HTML (escaped), `report --latest`, demo-vs-live labelling                                                  | Tests 18, 19, 25                                                   |
+| **3** | Reliability: bounded retries/backoff for transient errors, 429 + `Retry-After`, per-host spacing/concurrency, traces on failure                   | Tests 14, 15                                                       |
+| **4** | Reports: CSV (formula-injection safe), HTML (escaped), `report --latest`, demo-vs-live labelling                                                  | Tests 18, 19, 25                                                   |
 | 5     | Lever adapter (after inspecting real pages)                                                                                                       | Mocked integration tests                                           |
 | 6     | GitHub Actions CI + optional monitoring workflow with state branch                                                                                | CI green on PR                                                     |
 | 7     | README, ARCHITECTURE, TEST_STRATEGY, DECISIONS, badges                                                                                            | Docs match real commands                                           |
@@ -134,6 +134,25 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
     decides whether to repair or rebaseline.
 13. **`state/` is separate from `output/`** so the scheduled workflow (Phase 6) can persist
     state on its own branch without committing reports.
+14. **Retries are per page and only for transient failures** (timeouts, network errors, 408,
+    5xx). 401/403/404, redirects and structure changes are never retried.
+15. **429 is waited out at most once**, and only when `Retry-After` is present and ≤ 60 s.
+    Anything else means the site wants us to stop, so the company is `BLOCKED`.
+16. **One `HostThrottle` per run** enforces spacing per host across companies. Concurrency
+    stays at 1 (sequential companies); parallelism was not needed for the target scale.
+17. **Tab reset before retry.** Found by test: a timed-out navigation left its request
+    pending and the retry failed with `net::ERR_ABORTED`; loading `about:blank` first fixes it.
+18. **Traces are opt-in (`--trace`)** and kept only for failed companies, via trace chunks.
+19. **One folder per run** (`output/runs/<runId>/`) with `run.json`, `jobs.csv`, and
+    `report.html`; `output/latest.json` is written last so `report --latest` never sees a
+    half-written run. Run JSON `schemaVersion` went from 1 to 2.
+20. **One CSV table** (listings + change column, then removals) rather than several files:
+    easiest to filter in a spreadsheet.
+21. **HTML is hand-escaped with no template library**: one `escapeHtml` for all text, https-only
+    links, no scripts, and a CSP as a second layer. Tested with hostile input.
+22. **An offline `demo` command** runs the real pipeline against fictional pages. It gives
+    interviewers a no-network way to try the tool and is the source of every README example,
+    so no output in the docs is invented. Demo state/output is isolated in `output/demo/`.
 
 ## 7. Risks
 

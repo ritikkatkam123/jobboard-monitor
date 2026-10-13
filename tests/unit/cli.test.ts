@@ -42,6 +42,7 @@ function company(id: string, outcome: FakeOutcome): CompanyRunResult {
     pagesVisited: 1,
     duplicateCount: 0,
     durationMs: 1,
+    retries: [],
     listings: [],
     rejected: [],
     warnings: [],
@@ -190,22 +191,44 @@ describe('scan', () => {
     expect(runScan.mock.calls[0]?.[0].companies.map((c) => c.id)).toEqual(['off', 'acme']);
   });
 
-  it('writes the run JSON and prints its path', async () => {
+  it('writes JSON, CSV, and HTML reports into a folder per run and prints their paths', async () => {
     await runCli(['-c', configPath, '--log-level', 'silent', 'scan'], {
       io,
       runScan: fakeRunScan(),
     });
-    const files = await readdir(join(dir, 'output', 'runs'));
-    expect(files).toHaveLength(1);
-    const saved = JSON.parse(
-      await readFile(join(dir, 'output', 'runs', files[0] ?? ''), 'utf8'),
-    ) as {
+    const runs = await readdir(join(dir, 'output', 'runs'));
+    expect(runs).toHaveLength(1);
+    const runPath = join(dir, 'output', 'runs', runs[0] ?? '');
+    expect((await readdir(runPath)).sort()).toEqual(['jobs.csv', 'report.html', 'run.json']);
+    const saved = JSON.parse(await readFile(join(runPath, 'run.json'), 'utf8')) as {
       schemaVersion: number;
       companies: unknown[];
     };
-    expect(saved.schemaVersion).toBe(1);
+    expect(saved.schemaVersion).toBe(2);
     expect(saved.companies).toHaveLength(2);
-    expect(out).toContain(`Full results: ${join(dir, 'output', 'runs', files[0] ?? '')}`);
+    expect(out).toContain(`HTML: ${join(runPath, 'report.html')}`);
+    expect(out).toContain(`CSV:  ${join(runPath, 'jobs.csv')}`);
+  });
+
+  it('report --latest shows the most recent scan', async () => {
+    await runCli(['-c', configPath, '--log-level', 'silent', 'scan'], {
+      io,
+      runScan: fakeRunScan({ beta: 'FAILED' }),
+    });
+    out = '';
+    expect(await runCli(['-c', configPath, 'report', '--latest'], { io })).toBe(EXIT.OK);
+    expect(out).toContain('[FAIL] beta');
+    expect(out).toContain('report.html');
+  });
+
+  it('report --latest before any scan is a clear usage error', async () => {
+    expect(await runCli(['-c', configPath, 'report', '--latest'], { io })).toBe(EXIT.USAGE);
+    expect(err).toContain('No completed scan found');
+  });
+
+  it('report without --latest explains what to pass', async () => {
+    expect(await runCli(['-c', configPath, 'report'], { io })).toBe(EXIT.USAGE);
+    expect(err).toContain('Specify --latest');
   });
 
   it('exits 1 when any company fails, while still writing results', async () => {
@@ -244,8 +267,15 @@ describe('scan', () => {
     );
     const opts = runScan.mock.calls[0]?.[0];
     expect(opts?.dryRun).toBe(true);
+    expect(opts?.trace).toBe(false);
     expect(opts?.config.settings.stateDir).toBe(join(dir, 's'));
     expect(out).toContain('dry run: snapshots not saved');
+  });
+
+  it('--trace is passed through', async () => {
+    const runScan = fakeRunScan();
+    await runCli(['-c', configPath, '--log-level', 'silent', 'scan', '--trace'], { io, runScan });
+    expect(runScan.mock.calls[0]?.[0].trace).toBe(true);
   });
 
   it('a missing config file is a usage error', async () => {

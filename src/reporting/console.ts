@@ -1,4 +1,5 @@
 import type { CompanyRunResult, RunResult } from '../scan/run-scan.js';
+import type { ReportPaths } from './write.js';
 import type { JobChange } from '../schemas/snapshot.js';
 
 const MAX_PRINTED_CHANGES = 25;
@@ -37,10 +38,11 @@ function describeChange(change: JobChange): string[] {
 }
 
 /** Plain-text summary for the terminal. Logs (JSON) go to stderr separately. */
-export function formatRunSummary(run: RunResult, jsonPath: string): string {
+export function formatRunSummary(run: RunResult, paths: ReportPaths): string {
   const lines: string[] = [];
   lines.push(
-    `Run ${run.runId} (${run.dataSource} data${run.dryRun ? ', dry run: snapshots not saved' : ''}) ` +
+    `Run ${run.runId} (${run.dataSource === 'demo' ? 'DEMO data: fictional, not real jobs' : 'live data'}` +
+      `${run.dryRun ? ', dry run: snapshots not saved' : ''}) ` +
       `finished in ${run.durationMs} ms`,
   );
   lines.push('');
@@ -53,6 +55,13 @@ export function formatRunSummary(run: RunResult, jsonPath: string): string {
         : `${c.status}: ${c.error?.category ?? 'UNKNOWN'} - ${c.error?.message ?? ''}`;
     lines.push(`[${mark}] ${c.companyId.padEnd(20)} ${detail}`);
     lines.push(`         ${trackingLine(c)}`);
+    for (const r of c.retries) {
+      lines.push(
+        `         retried page ${r.page} after ${r.category}` +
+          (r.httpStatus !== null ? ` (HTTP ${r.httpStatus})` : '') +
+          `, waited ${r.delayMs} ms (${r.reason})`,
+      );
+    }
     for (const w of [...c.warnings, ...c.tracking.warnings]) lines.push(`         warning: ${w}`);
     for (const d of c.diagnostics) lines.push(`         diagnostic: ${d}`);
   }
@@ -92,6 +101,7 @@ export function formatRunSummary(run: RunResult, jsonPath: string): string {
   if (filtered) {
     lines.push('');
     lines.push('Current listings matching filters:');
+    if (run.matchedListings.length === 0) lines.push('  (none)');
     for (const job of run.matchedListings.slice(0, MAX_PRINTED_CHANGES)) {
       lines.push(`  - ${job.title} | ${job.location ?? 'location n/a'} | ${job.companyName}`);
       lines.push(`    ${job.url}`);
@@ -103,6 +113,9 @@ export function formatRunSummary(run: RunResult, jsonPath: string): string {
     }
   }
   lines.push('');
-  lines.push(`Full results: ${jsonPath}`);
+  lines.push('Reports:');
+  lines.push(`  HTML: ${paths.html}`);
+  lines.push(`  CSV:  ${paths.csv}`);
+  lines.push(`  JSON: ${paths.json}`);
   return `${lines.join('\n')}\n`;
 }

@@ -9,14 +9,17 @@ export interface NavigateOptions {
 }
 
 export type NavigationOutcome =
-  { ok: true; response: Response; finalUrl: string } | { ok: false; error: ScanError };
+  | { ok: true; response: Response; finalUrl: string }
+  /** `retryAfter` is the raw Retry-After header of a failed HTTP response, if any. */
+  | { ok: false; error: ScanError; retryAfter: string | null };
 
 function fail(
   category: ScanError['category'],
   message: string,
   httpStatus: number | null = null,
+  retryAfter: string | null = null,
 ): NavigationOutcome {
-  return { ok: false, error: { category, message, httpStatus } };
+  return { ok: false, error: { category, message, httpStatus }, retryAfter };
 }
 
 function allowed(href: string, base: string, isAllowedUrl: (u: URL) => boolean): boolean {
@@ -82,7 +85,10 @@ export async function navigate(
 
   const status = response.status();
   const category = categorizeHttpStatus(status);
-  if (category !== null) return fail(category, `HTTP ${status} for ${finalUrl}`, status);
+  if (category !== null) {
+    const retryAfter = response.headers()['retry-after'] ?? null;
+    return fail(category, `HTTP ${status} for ${finalUrl}`, status, retryAfter);
+  }
 
   return { ok: true, response, finalUrl };
 }

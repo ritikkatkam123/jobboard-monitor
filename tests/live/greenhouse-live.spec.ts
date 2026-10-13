@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { greenhouseAdapter } from '../../src/adapters/greenhouse/adapter.js';
 import { blockHeavyResources } from '../../src/browser/browser.js';
+import { HostThrottle } from '../../src/browser/throttle.js';
 import { silentLogger } from '../../src/logging/logger.js';
 import { settingsSchema } from '../../src/schemas/config.js';
 
@@ -14,6 +15,8 @@ import { settingsSchema } from '../../src/schemas/config.js';
  */
 const token = process.env.LIVE_GREENHOUSE_BOARD ?? 'gitlab';
 
+const settings = settingsSchema.parse({});
+
 test(`live Greenhouse board "${token}" scans completely`, async ({ context }, testInfo) => {
   await blockHeavyResources(context);
   const result = await greenhouseAdapter.collect(
@@ -26,10 +29,11 @@ test(`live Greenhouse board "${token}" scans completely`, async ({ context }, te
     },
     {
       context,
-      settings: settingsSchema.parse({}),
+      settings,
       observedAt: new Date().toISOString(),
       diagnosticsDir: testInfo.outputPath('diagnostics'),
       logger: silentLogger(),
+      throttle: new HostThrottle(settings.requestDelayMs),
     },
   );
 

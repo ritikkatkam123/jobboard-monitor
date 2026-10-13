@@ -1,12 +1,12 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Page } from 'playwright';
 import { isBlockingCategory } from '../../browser/http-status.js';
-import { navigate } from '../../browser/navigate.js';
+import { navigateWithRetry } from '../../browser/navigate-with-retry.js';
 import { assembleListings } from '../../core/assemble.js';
 import { cleanText } from '../../core/text.js';
 import type { GreenhouseCompany } from '../../schemas/config.js';
 import type { RawJobListing } from '../../schemas/job.js';
-import type { CompanyScanResult, ScanError } from '../../schemas/result.js';
+import type { CompanyScanResult, RetryRecord, ScanError } from '../../schemas/result.js';
 import { captureDiagnostics } from '../diagnostics.js';
 import type { CareerSiteAdapter } from '../types.js';
 import { boardUrl, greenhouseUrlRules, isBoardPage, parseJobCount } from './urls.js';
@@ -86,6 +86,13 @@ export const greenhouseAdapter: CareerSiteAdapter<GreenhouseCompany> = {
     let error: ScanError | null = null;
     let diagnostics: string[] = [];
     const extraWarnings: string[] = [];
+    const retries: RetryRecord[] = [];
+    const policy = {
+      maxRetries: settings.maxRetries,
+      baseDelayMs: settings.retryBaseDelayMs,
+      maxRetryAfterMs: settings.maxRetryAfterMs,
+      random: options.random ?? Math.random,
+    };
 
     const stop = async (e: ScanError): Promise<ScanError> => {
       log.warn({ category: e.category, httpStatus: e.httpStatus }, e.message);
@@ -100,13 +107,21 @@ export const greenhouseAdapter: CareerSiteAdapter<GreenhouseCompany> = {
     try {
       for (let n = 1; n <= settings.maxPagesPerBoard; n++) {
         currentPage = n;
-        if (n > 1) await sleep(settings.requestDelayMs);
         const url = boardUrl(company.boardToken, n);
         log.debug({ url, page: n }, 'navigating');
 
-        const nav = await navigate(page, url, {
+        // The shared throttle spaces requests to the host (also across companies);
+        // transient failures are retried with backoff, permanent ones are not.
+        const nav = await navigateWithRetry(page, url, {
           timeoutMs: settings.navigationTimeoutMs,
           isAllowedUrl: (u) => isBoardPage(u, company.boardToken),
+          policy,
+          throttle: options.throttle,
+          sleep,
+          onRetry: (record) => {
+            retries.push({ page: n, ...record });
+            log.warn({ page: n, ...record }, 'retrying navigation');
+          },
         });
         if (!nav.ok) {
           error = await stop(nav.error);
@@ -225,6 +240,7 @@ export const greenhouseAdapter: CareerSiteAdapter<GreenhouseCompany> = {
       pagesVisited,
       duplicateCount: assembled.duplicateCount,
       durationMs: Date.now() - started,
+      retries,
       listings: assembled.listings,
       rejected: assembled.rejected,
       warnings: error === null ? [...extraWarnings, ...assembled.warnings] : extraWarnings,

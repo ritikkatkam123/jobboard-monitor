@@ -4,6 +4,7 @@ import { greenhouseAdapter } from '../../src/adapters/greenhouse/adapter.js';
 import {
   acme,
   BOARD,
+  fakeClock,
   fixture,
   OBSERVED_AT,
   runOptions,
@@ -17,17 +18,9 @@ test.describe('Greenhouse adapter against local fixtures', () => {
       [BOARD]: { html: fixture('acme-page1.html') },
       [`${BOARD}?page=2`]: { html: fixture('acme-page2.html') },
     });
-    const sleeps: number[] = [];
+    const clock = fakeClock();
 
-    const result = await greenhouseAdapter.collect(
-      acme,
-      runOptions(context, {
-        sleep: (ms) => {
-          sleeps.push(ms);
-          return Promise.resolve();
-        },
-      }),
-    );
+    const result = await greenhouseAdapter.collect(acme, runOptions(context, {}, clock));
 
     expect(result.error).toBeNull();
     expect(result.status).toBe('SUCCESS');
@@ -39,7 +32,8 @@ test.describe('Greenhouse adapter against local fixtures', () => {
     expect(net.requested).toEqual([BOARD, `${BOARD}?page=2`]);
     expect(net.unexpected).toEqual([]);
     // Polite spacing between page navigations.
-    expect(sleeps).toEqual([250]);
+    expect(clock.sleeps).toEqual([250]);
+    expect(result.retries).toEqual([]);
 
     expect(result.listings.map((j) => j.id)).toEqual([
       'greenhouse:acme:1001',
@@ -173,6 +167,11 @@ test.describe('Greenhouse adapter against local fixtures', () => {
     );
     expect(result.status).toBe('FAILED');
     expect(result.error?.category).toBe('NAVIGATION_TIMEOUT');
+    // Each retry is a clean timeout, not an abort caused by the previous pending request.
+    expect(result.retries.map((r) => r.category)).toEqual([
+      'NAVIGATION_TIMEOUT',
+      'NAVIGATION_TIMEOUT',
+    ]);
   });
 
   test('a redirect to an off-board host fails without extracting anything', async ({ context }) => {
