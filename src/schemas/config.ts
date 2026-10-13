@@ -26,14 +26,32 @@ export const greenhouseCompanySchema = z.strictObject({
   boardToken: greenhouseBoardToken,
 });
 
-export const SUPPORTED_PROVIDERS = ['greenhouse'] as const;
+/**
+ * Lever site name as it appears in `jobs.lever.co/<site>`. Like Greenhouse, we store
+ * the name and build the URL ourselves.
+ */
+const leverSite = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,100}$/, 'must contain only letters, digits, "_" or "-"');
 
-export const companySchema = z.discriminatedUnion('provider', [greenhouseCompanySchema], {
-  error: (issue) =>
-    typeof issue.input === 'object' && issue.input !== null
-      ? `unsupported provider; supported providers: ${SUPPORTED_PROVIDERS.join(', ')}`
-      : 'each company must be an object',
+export const leverCompanySchema = z.strictObject({
+  ...companyBase,
+  provider: z.literal('lever'),
+  site: leverSite,
 });
+
+export const SUPPORTED_PROVIDERS = ['greenhouse', 'lever'] as const;
+
+export const companySchema = z.discriminatedUnion(
+  'provider',
+  [greenhouseCompanySchema, leverCompanySchema],
+  {
+    error: (issue) =>
+      typeof issue.input === 'object' && issue.input !== null
+        ? `unsupported provider; supported providers: ${SUPPORTED_PROVIDERS.join(', ')}`
+        : 'each company must be an object',
+  },
+);
 
 export const settingsSchema = z.strictObject({
   /** Pause between page navigations on the same board. */
@@ -74,6 +92,7 @@ export const configSchema = z
   });
 
 export type GreenhouseCompany = z.infer<typeof greenhouseCompanySchema>;
+export type LeverCompany = z.infer<typeof leverCompanySchema>;
 export type CompanyConfig = z.infer<typeof companySchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type AppConfig = z.infer<typeof configSchema>;

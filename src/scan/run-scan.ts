@@ -71,6 +71,8 @@ export interface RunScanOptions {
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   random?: () => number;
+  /** Override for tests that need exact, clock-independent spacing. */
+  throttle?: HostThrottle;
 }
 
 async function defaultOpenContext() {
@@ -169,7 +171,8 @@ export async function runScan(options: RunScanOptions): Promise<RunResult> {
   const { context, close } = await (options.openContext ?? defaultOpenContext)();
   const { settings } = options.config;
   // One throttle for the whole run: spacing also applies between companies on the same host.
-  const throttle = new HostThrottle(settings.requestDelayMs, () => Date.now(), options.sleep);
+  const throttle =
+    options.throttle ?? new HostThrottle(settings.requestDelayMs, () => Date.now(), options.sleep);
   const tracing = options.trace === true;
   const results: CompanyRunResult[] = [];
   try {

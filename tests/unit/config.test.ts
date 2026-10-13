@@ -36,7 +36,7 @@ describe('parseConfig', () => {
 
   it('explains unsupported providers', () => {
     expect(issuesOf({ companies: [{ ...company, provider: 'workday' }] })).toEqual([
-      'companies.0.provider: unsupported provider; supported providers: greenhouse',
+      'companies.0.provider: unsupported provider; supported providers: greenhouse, lever',
     ]);
   });
 

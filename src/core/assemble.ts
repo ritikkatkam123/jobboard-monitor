@@ -9,6 +9,11 @@ export interface ExtractionFacts {
   expectedCount: number | null;
   /** False if pagination stopped early (page limit, empty later page, etc.). */
   traversalFinished: boolean;
+  /**
+   * The board shows its entire list on a single page (e.g. Lever), so there is no
+   * pagination to get wrong and no count to check against.
+   */
+  singlePageList?: boolean;
 }
 
 export interface AssembledListings {
@@ -47,20 +52,20 @@ export function assembleListings(facts: ExtractionFacts, ctx: NormalizeContext):
   for (const id of conflictingIds) {
     warnings.push(`Duplicate ID ${id} appeared with different details; kept the first`);
   }
-  if (facts.expectedCount === null) {
+  if (facts.expectedCount === null && facts.singlePageList !== true) {
     warnings.push('Board did not report a job count; completeness cannot be verified');
-  } else if (facts.raw.length !== facts.expectedCount) {
+  } else if (facts.expectedCount !== null && facts.raw.length !== facts.expectedCount) {
     warnings.push(
       `Extracted ${facts.raw.length} rows but the board reports ${facts.expectedCount} jobs`,
     );
   }
   if (!facts.traversalFinished) warnings.push('Pagination stopped before the last page');
 
-  const complete =
-    facts.traversalFinished &&
-    facts.expectedCount !== null &&
-    facts.raw.length === facts.expectedCount &&
-    rejected.length === 0;
+  const countOk =
+    facts.expectedCount !== null
+      ? facts.raw.length === facts.expectedCount
+      : facts.singlePageList === true;
+  const complete = facts.traversalFinished && countOk && rejected.length === 0;
 
   return { listings, rejected, duplicateCount, complete, warnings };
 }

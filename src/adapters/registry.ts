@@ -1,6 +1,7 @@
 import type { CompanyConfig } from '../schemas/config.js';
 import type { CompanyScanResult } from '../schemas/result.js';
 import { greenhouseAdapter } from './greenhouse/adapter.js';
+import { leverAdapter } from './lever/adapter.js';
 import type { AdapterRunOptions, CareerSiteAdapter } from './types.js';
 
 type Provider = CompanyConfig['provider'];
@@ -12,11 +13,14 @@ type CompanyFor<P extends Provider> = Extract<CompanyConfig, { provider: P }>;
  */
 const ADAPTERS: { [P in Provider]: CareerSiteAdapter<CompanyFor<P>> } = {
   greenhouse: greenhouseAdapter,
+  lever: leverAdapter,
 };
 
-// With more than one provider, TypeScript will need a cast here because it cannot
-// correlate `company.provider` with the matching map entry.
-const adapterFor = (company: CompanyConfig) => ADAPTERS[company.provider];
+function adapterFor<C extends CompanyConfig>(company: C): CareerSiteAdapter<C> {
+  // TypeScript cannot connect `company.provider` to the matching map entry, so this cast
+  // is needed; the mapped type above guarantees every provider has the right adapter.
+  return ADAPTERS[company.provider] as unknown as CareerSiteAdapter<C>;
+}
 
 export function collectCompany(
   company: CompanyConfig,

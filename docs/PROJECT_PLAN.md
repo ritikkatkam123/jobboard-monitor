@@ -43,10 +43,24 @@ JSON files.
 - Not observed: what a board with zero openings looks like. The adapter assumes the
   count header would read `0 jobs`; this is **unverified** and called out below.
 
-### Lever hosted boards — Phase 5
+### Lever hosted boards — inspected 2026-10-13 on `jobs.lever.co/{spotify,palantir,zoox,lever,demo}`
 
-`jobs.lever.co/robots.txt` allows crawling with `Crawl-delay: 1`. DOM will be
-inspected when Phase 5 starts; no Lever selectors are assumed now.
+- `robots.txt` allows crawling with `Crawl-delay: 1` (our default spacing is 1 s).
+- **No pagination:** every posting is on one server-rendered page (311 on Palantir).
+- **No count header.** The page posting IDs matched Lever's documented postings feed
+  exactly on two boards (83/83, 311/311), so the single page is the whole list.
+- The feed was **not** adopted for every scan: it includes full descriptions (775 KB for
+  Spotify, 5.8 MB for Palantir). It is used only by the opt-in live smoke test as an
+  independent check.
+- Posting: `.posting[data-qa-posting-id]` > `a.posting-title[href]` > `h5[data-qa="posting-name"]`;
+  `.posting-categories` spans `.workplaceTypes` ("Hybrid&nbsp;—&nbsp;"), `.commitment`, `.location`.
+  Each posting also has an Apply link (`/<site>/<id>/apply`), which is never followed.
+- Groups: `.postings-group` with `.posting-category-title` (team); `.large-category-header`
+  (department) appears only on the first group of each department. Lever's feed confirms
+  these are `categories.department` and `categories.team`.
+- **Empty board:** `.postings-wrapper` contains `p.no-postings-message` ("No job postings
+  currently open."). Observed on the real `lever` and `demo` boards.
+- Unknown board: HTTP **404**.
 
 ### Playwright behavior that shaped the design
 
@@ -89,7 +103,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 
 ## 5. Phases
 
-**Status:** Phases 0–4 complete (2026-10-13). Phase 5 is next.
+**Status:** Phases 0–5 complete (2026-10-13). Phase 6 is next.
 
 | Phase | Scope                                                                                                                                             | Exit criteria                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -98,7 +112,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 | **2** | Snapshots + change detection (`NEW`, `UPDATED`, `POSSIBLY_REMOVED`, `REMOVED`), history, atomic writes, partial-failure isolation                 | Tests 7–12, 16, 17, 23                                             |
 | **3** | Reliability: bounded retries/backoff for transient errors, 429 + `Retry-After`, per-host spacing/concurrency, traces on failure                   | Tests 14, 15                                                       |
 | **4** | Reports: CSV (formula-injection safe), HTML (escaped), `report --latest`, demo-vs-live labelling                                                  | Tests 18, 19, 25                                                   |
-| 5     | Lever adapter (after inspecting real pages)                                                                                                       | Mocked integration tests                                           |
+| **5** | Lever adapter (after inspecting real pages)                                                                                                       | Mocked integration tests                                           |
 | 6     | GitHub Actions CI + optional monitoring workflow with state branch                                                                                | CI green on PR                                                     |
 | 7     | README, ARCHITECTURE, TEST_STRATEGY, DECISIONS, badges                                                                                            | Docs match real commands                                           |
 
@@ -153,6 +167,13 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 22. **An offline `demo` command** runs the real pipeline against fictional pages. It gives
     interviewers a no-network way to try the tool and is the source of every README example,
     so no output in the docs is invented. Demo state/output is isolated in `output/demo/`.
+23. **Lever completeness without a count:** a scan is complete when the postings container
+    is present, either postings or Lever's explicit empty message is found, and no row is
+    rejected. Empty without the message is `SUSPICIOUS_EMPTY`.
+24. **Shared `finishScan`** extracted once there were two adapters, so validation, status,
+    and completeness rules cannot drift between providers.
+25. **Lever-only fields** (workplace type, commitment) fill `workplaceType`/`employmentType`;
+    Greenhouse leaves them `null` because its list page does not show them.
 
 ## 7. Risks
 

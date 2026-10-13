@@ -145,6 +145,25 @@ describe('assembleListings completeness rules', () => {
     expect(r.rejected).toHaveLength(1);
   });
 
+  it('a single-page list (Lever) is complete without a count and without a count warning', () => {
+    const r = assembleListings(
+      { raw: [row(1)], expectedCount: null, traversalFinished: true, singlePageList: true },
+      ctx,
+    );
+    expect(r).toMatchObject({ complete: true, warnings: [] });
+  });
+
+  it('a single-page list is still incomplete when a row is rejected or traversal stopped', () => {
+    const facts = { expectedCount: null, singlePageList: true } as const;
+    expect(
+      assembleListings({ ...facts, raw: [row(1), row(2, '')], traversalFinished: true }, ctx)
+        .complete,
+    ).toBe(false);
+    expect(
+      assembleListings({ ...facts, raw: [row(1)], traversalFinished: false }, ctx).complete,
+    ).toBe(false);
+  });
+
   it('a valid empty board is complete with no warnings', () => {
     const r = assembleListings({ raw: [], expectedCount: 0, traversalFinished: true }, ctx);
     expect(r).toMatchObject({ complete: true, listings: [], warnings: [] });

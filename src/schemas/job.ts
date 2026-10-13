@@ -41,4 +41,7 @@ export interface RawJobListing {
   url: string | null;
   location: string | null;
   department: string | null;
+  /** Only some providers expose these on the list page (Lever does, Greenhouse does not). */
+  employmentType?: string | null;
+  workplaceType?: string | null;
 }

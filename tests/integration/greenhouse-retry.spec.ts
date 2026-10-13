@@ -161,7 +161,10 @@ test('requests to the same host are spaced across companies', async ({ context }
     }),
     companies: [acme, beta],
   };
-  const sleeps: number[] = [];
+  // Virtual clock: navigation time does not count, so each wait is exactly the 5 s spacing.
+  // (With the real clock this test failed on a heavily loaded machine: a slow request
+  // correctly shortened the remaining wait to 3.8 s.)
+  const clock = fakeClock();
   const run = await runScan({
     config,
     companies: config.companies,
@@ -169,17 +172,10 @@ test('requests to the same host are spaced across companies', async ({ context }
     runId: 'spacing',
     logger: silentLogger(),
     openContext: () => Promise.resolve({ context, close: () => Promise.resolve() }),
-    // Real clock, recorded sleeps: each wait should be close to the 5 s spacing.
-    sleep: (ms) => {
-      sleeps.push(ms);
-      return Promise.resolve();
-    },
+    sleep: clock.sleep,
+    throttle: clock.throttle(5000),
   });
   expect(run.summary.companiesSucceeded).toBe(2);
-  // acme page 1 -> page 2, then acme page 2 -> beta page 1: both spaced.
-  expect(sleeps).toHaveLength(2);
-  for (const ms of sleeps) {
-    expect(ms).toBeGreaterThan(4000);
-    expect(ms).toBeLessThanOrEqual(5000);
-  }
+  // acme page 1 -> page 2, then acme page 2 -> beta page 1: both spaced by exactly 5 s.
+  expect(clock.sleeps).toEqual([5000, 5000]);
 });

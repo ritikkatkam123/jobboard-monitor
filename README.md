@@ -1,14 +1,19 @@
 # JobBoard Monitor
 
-> **Status: Phase 4 of 7 (work in progress).** This README documents only what is
-> implemented today. A Lever adapter and CI are planned —
+> **Status: Phase 5 of 7 (work in progress).** This README documents only what is
+> implemented today. CI is planned —
 > see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
 A TypeScript command-line tool that uses Playwright to collect **public** job postings
 from company career boards, normalize them into one validated format, and track which
 jobs are new, updated, or removed between runs.
 
-Currently supported: **Greenhouse hosted boards** (`job-boards.greenhouse.io/<token>`).
+Supported providers:
+
+| Provider   | Board URL                          | Config field | Completeness check                                                                 | Extra fields                                       |
+| ---------- | ---------------------------------- | ------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Greenhouse | `job-boards.greenhouse.io/<token>` | `boardToken` | Row count must equal the board's own "N jobs" count; paginated                     | —                                                  |
+| Lever      | `jobs.lever.co/<site>`             | `site`       | Whole list on one page; an empty board must show Lever's "No job postings" message | workplace type, employment type, department / team |
 
 ## Requirements
 
@@ -40,16 +45,19 @@ npx playwright install chromium
     "removedRetentionDays": 90
   },
   "companies": [
-    { "id": "gitlab", "name": "GitLab", "provider": "greenhouse", "boardToken": "gitlab" }
+    { "id": "gitlab", "name": "GitLab", "provider": "greenhouse", "boardToken": "gitlab" },
+    { "id": "spotify", "name": "Spotify", "provider": "lever", "site": "spotify" }
   ]
 }
 ```
 
-- `boardToken` is the part after `job-boards.greenhouse.io/`. URLs are never accepted
-  in config; the tool builds them itself.
+- `boardToken` is the part after `job-boards.greenhouse.io/`; `site` is the part after
+  `jobs.lever.co/`. URLs are never accepted in config; the tool builds them itself.
+- Unsupported providers are rejected by `validate-config` with the list of supported ones.
 - `enabled` (default `true`) controls whether a company is included in a plain `scan`.
-- Companies whose Greenhouse board redirects to their own careers site are not supported
-  and fail with `UNEXPECTED_REDIRECT`.
+- Companies whose board redirects to their own careers site are not supported and fail
+  with `UNEXPECTED_REDIRECT`.
+- Lever's EU host (`jobs.eu.lever.co`) is not supported yet.
 
 ## Try it in 10 seconds (no network)
 
@@ -261,7 +269,7 @@ count, or rows were rejected) still exits 0 and is flagged `WARN` in the summary
 npm run test:unit          # Vitest: pure logic
 npm run test:integration   # Playwright: adapter vs. local fixtures, network blocked
 npm test                   # both
-npm run test:live          # OPT-IN: real Greenhouse board (network required)
+npm run test:live          # OPT-IN: real Greenhouse + Lever boards (network required)
 npm run check              # lint + format + typecheck + unit + integration
 ```
 

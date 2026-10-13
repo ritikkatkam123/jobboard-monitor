@@ -6,7 +6,7 @@ const BASE = 'https://job-boards.greenhouse.io/acme';
 
 describe('cleanText', () => {
   it('collapses whitespace including newlines, tabs and non-breaking spaces', () => {
-    expect(cleanText('  Senior\n\tQA  Engineer  ')).toBe('Senior QA Engineer');
+    expect(cleanText('  Senior\n\tQA\u00a0 Engineer  ')).toBe('Senior QA Engineer');
   });
   it('returns null for missing or blank values', () => {
     expect(cleanText(null)).toBeNull();

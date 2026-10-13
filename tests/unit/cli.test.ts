@@ -138,7 +138,7 @@ describe('validate-config', () => {
   });
 
   it('lists every problem in an invalid config and exits 2', async () => {
-    await writeFile(configPath, JSON.stringify({ companies: [{ id: 'x', provider: 'lever' }] }));
+    await writeFile(configPath, JSON.stringify({ companies: [{ id: 'x', provider: 'workday' }] }));
     expect(await runCli(['-c', configPath, 'validate-config'], { io })).toBe(EXIT.USAGE);
     expect(err).toContain('Error: Configuration is invalid');
     expect(err).toContain('companies.0.provider: unsupported provider');

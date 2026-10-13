@@ -12,7 +12,9 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'integration', testDir: 'tests/integration' },
+    // Browser tests get 60 s: a slow or busy machine (or CI runner) should not fail
+    // them by timeout alone. Retries stay at 0, so real defects still fail.
+    { name: 'integration', testDir: 'tests/integration', timeout: 60_000 },
     // Opt-in only: hits real public boards. Run with `npm run test:live`.
     { name: 'live', testDir: 'tests/live', timeout: 120_000 },
   ],

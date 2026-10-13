@@ -1,13 +1,12 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Page } from 'playwright';
-import { isBlockingCategory } from '../../browser/http-status.js';
 import { navigateWithRetry } from '../../browser/navigate-with-retry.js';
-import { assembleListings } from '../../core/assemble.js';
 import { cleanText } from '../../core/text.js';
 import type { GreenhouseCompany } from '../../schemas/config.js';
 import type { RawJobListing } from '../../schemas/job.js';
-import type { CompanyScanResult, RetryRecord, ScanError } from '../../schemas/result.js';
+import type { RetryRecord, ScanError } from '../../schemas/result.js';
 import { captureDiagnostics } from '../diagnostics.js';
+import { finishScan, retryPolicyFrom } from '../finish.js';
 import type { CareerSiteAdapter } from '../types.js';
 import { boardUrl, greenhouseUrlRules, isBoardPage, parseJobCount } from './urls.js';
 
@@ -87,12 +86,7 @@ export const greenhouseAdapter: CareerSiteAdapter<GreenhouseCompany> = {
     let diagnostics: string[] = [];
     const extraWarnings: string[] = [];
     const retries: RetryRecord[] = [];
-    const policy = {
-      maxRetries: settings.maxRetries,
-      baseDelayMs: settings.retryBaseDelayMs,
-      maxRetryAfterMs: settings.maxRetryAfterMs,
-      random: options.random ?? Math.random,
-    };
+    const policy = retryPolicyFrom(settings, options.random);
 
     const stop = async (e: ScanError): Promise<ScanError> => {
       log.warn({ category: e.category, httpStatus: e.httpStatus }, e.message);
@@ -197,67 +191,32 @@ export const greenhouseAdapter: CareerSiteAdapter<GreenhouseCompany> = {
       await page.close().catch(() => undefined);
     }
 
-    const assembled = assembleListings(
-      { raw, expectedCount, traversalFinished: traversalFinished && error === null },
+    return finishScan(
       {
         companyId: company.id,
         companyName: company.name,
-        sourceAdapter: ADAPTER_NAME,
-        boardKey: company.boardToken,
-        baseUrl: boardUrl(company.boardToken),
-        observedAt: options.observedAt,
-        rules: greenhouseUrlRules(company.boardToken),
+        adapter: ADAPTER_NAME,
+        sourceUrl: boardUrl(company.boardToken),
+        startedAt: started,
+        raw,
+        expectedCount,
+        traversalFinished,
+        pagesVisited,
+        error,
+        extraWarnings,
+        retries,
+        diagnostics,
+        normalize: {
+          companyId: company.id,
+          companyName: company.name,
+          sourceAdapter: ADAPTER_NAME,
+          boardKey: company.boardToken,
+          baseUrl: boardUrl(company.boardToken),
+          observedAt: options.observedAt,
+          rules: greenhouseUrlRules(company.boardToken),
+        },
       },
+      log,
     );
-
-    // Rows existed but none survived validation: treat as a structure problem, not "no jobs".
-    const finalError: ScanError | null =
-      error ??
-      (raw.length > 0 && assembled.listings.length === 0
-        ? {
-            category: 'STRUCTURE_CHANGED',
-            message: 'Rows were found but none could be validated',
-            httpStatus: null,
-          }
-        : null);
-
-    const status: CompanyScanResult['status'] =
-      finalError === null
-        ? 'SUCCESS'
-        : isBlockingCategory(finalError.category)
-          ? 'BLOCKED'
-          : 'FAILED';
-
-    const result: CompanyScanResult = {
-      companyId: company.id,
-      companyName: company.name,
-      adapter: ADAPTER_NAME,
-      sourceUrl: boardUrl(company.boardToken),
-      status,
-      complete: status === 'SUCCESS' && assembled.complete,
-      expectedCount,
-      rawCount: raw.length,
-      pagesVisited,
-      duplicateCount: assembled.duplicateCount,
-      durationMs: Date.now() - started,
-      retries,
-      listings: assembled.listings,
-      rejected: assembled.rejected,
-      warnings: error === null ? [...extraWarnings, ...assembled.warnings] : extraWarnings,
-      error: finalError,
-      diagnostics,
-    };
-    log.info(
-      {
-        status: result.status,
-        complete: result.complete,
-        listings: result.listings.length,
-        rejected: result.rejected.length,
-        pages: pagesVisited,
-        durationMs: result.durationMs,
-      },
-      'company scan finished',
-    );
-    return result;
   },
 };
