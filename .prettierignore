@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+state/
+playwright-report/
+test-results/
+package-lock.json
+tests/fixtures/**/*.html

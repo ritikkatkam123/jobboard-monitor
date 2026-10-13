@@ -1,0 +1,42 @@
+{
+  "name": "jobboard-monitor",
+  "version": "0.1.0",
+  "scripts": {
+    "monitor": "tsx src/cli/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:unit": "vitest run",
+    "test:integration": "playwright test --project=integration",
+    "test:live": "playwright test --project=live",
+    "test": "npm run test:unit && npm run test:integration",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test"
+  },
+  "license": "MIT",
+  "description": "CLI that monitors public company career boards with Playwright and tracks job posting changes.",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "pino": "^10.4.0",
+    "playwright": "1.64.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.4"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
