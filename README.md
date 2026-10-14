@@ -2,31 +2,95 @@
 
 [![CI](https://github.com/ritikkatkam123/jobboard-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/ritikkatkam123/jobboard-monitor/actions/workflows/ci.yml)
 
-> **Status: Phase 6 of 7 complete; final documentation pass pending.** This README documents only what is
-> implemented today — see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
-
 A TypeScript command-line tool that uses Playwright to collect **public** job postings
 from company career boards, normalize them into one validated format, and track which
 jobs are new, updated, or removed between runs.
 
-Supported providers:
+**Why:** checking a dozen career pages by hand every day is slow and easy to get wrong, and
+naive scrapers report false "job removed" alerts whenever a site is slow or changes its
+layout. This tool is built to be trustworthy first: it only reports a removal after two
+complete, successful scans, and it says clearly when it could not get a reliable result.
+
+**Use cases:** follow openings at target companies during a job search; get a daily list of
+new roles matching "SDET" in "Texas"; keep a history of when postings appeared and
+disappeared. Try it offline in 10 seconds with `npm run monitor -- demo`.
+
+## Features
+
+- **Two providers:** Greenhouse and Lever hosted job boards, collected with a real browser
+  (Playwright + Chromium), with selectors taken from inspected real pages.
+- **Validated, normalized data:** one `JobListing` shape (Zod-validated), canonical URLs with
+  tracking parameters removed, stable IDs from each provider's posting ID, duplicates removed.
+- **Change tracking:** `NEW`, `UPDATED` (with field-level before/after), `POSSIBLY_REMOVED`,
+  and `REMOVED` after two consecutive complete scans. Failed or incomplete scans never touch
+  saved history.
+- **Honest completeness checks:** row counts are checked against the board's own count, empty
+  results must be confirmed by the board, and a changed page layout is reported, not
+  mistaken for "no jobs".
+- **Reliability:** timeouts, bounded retries with backoff for temporary errors only,
+  `Retry-After` support, per-site request spacing, failure screenshots and Playwright traces.
+- **Safe reports:** JSON, CSV (protected against spreadsheet formula injection), and a
+  self-contained HTML report (escaped, no scripts), labeled live or demo.
+- **Automation:** GitHub Actions CI, plus an optional monitoring workflow that keeps
+  snapshots on a separate branch between runs.
+- **Responsible by design:** public pages only, no login, no CAPTCHA or bot-protection
+  workarounds, stops when a site refuses access.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[config/companies.json] --> B[Provider adapter<br/>Greenhouse / Lever]
+    B -->|Playwright| C[(Public job board)]
+    B --> D[Normalize, validate,<br/>dedupe, check completeness]
+    D --> E[Compare with last snapshot]
+    S[(Snapshots)] <--> E
+    E --> F[Reports: JSON, CSV, HTML<br/>+ console summary]
+```
+
+Site-specific code (selectors, HTTP handling) is kept apart from the business rules (what a
+valid job is, when a scan can be trusted, what changed), which are pure functions tested
+without a browser. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Tech stack
+
+TypeScript (strict) on Node.js 22 · Playwright · Commander (CLI) · Zod (validation) · Pino
+(structured logs) · Vitest (unit tests) · Playwright Test (browser tests) · ESLint + Prettier ·
+GitHub Actions. No database, server, or frontend — state is JSON files.
+
+## Documentation
+
+| Document                                       | Contents                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)   | Modules, data flow and sequence diagrams, adapter contract, data model         |
+| [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md) | Test layers, offline fixtures, fake clock, traceability of required test cases |
+| [docs/DECISIONS.md](docs/DECISIONS.md)         | Design decisions with reasons and trade-offs                                   |
+| [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)   | Phases, real-site observations, risks                                          |
+
+## Supported providers
 
 | Provider   | Board URL                          | Config field | Completeness check                                                                 | Extra fields                                       |
 | ---------- | ---------------------------------- | ------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Greenhouse | `job-boards.greenhouse.io/<token>` | `boardToken` | Row count must equal the board's own "N jobs" count; paginated                     | —                                                  |
 | Lever      | `jobs.lever.co/<site>`             | `site`       | Whole list on one page; an empty board must show Lever's "No job postings" message | workplace type, employment type, department / team |
 
-## Requirements
+## Prerequisites
 
-- Node.js 22+
-- npm
+- Node.js 22 or newer (see `.nvmrc`) and npm
+- Disk space for Playwright's Chromium download
+- Network access for real scans (not needed for the demo or the default tests)
 
-## Setup
+## Installation
 
 ```bash
+git clone https://github.com/ritikkatkam123/jobboard-monitor.git
+cd jobboard-monitor
 npm ci
 npx playwright install chromium
+npm run monitor -- validate-config
 ```
+
+All commands below are run from the `jobboard-monitor` folder.
 
 ## Configuration
 
@@ -266,6 +330,14 @@ count, or rows were rejected) still exits 0 and is flagged `WARN` in the summary
 
 ## Testing
 
+Three layers — details and a traceability table in [docs/TEST_STRATEGY.md](docs/TEST_STRATEGY.md):
+
+- **Unit (Vitest):** pure logic — normalization, identity, filters, completeness, change
+  detection, retry rules, CSV/HTML escaping, snapshot files, CLI arguments.
+- **Integration (Playwright, offline):** real Chromium runs the real adapters against local
+  fictional pages; every other request is blocked, and time is simulated with a fake clock.
+- **Live smoke (opt-in):** checks real Greenhouse and Lever boards; never runs in CI.
+
 ```bash
 npm run test:unit          # Vitest: pure logic
 npm run test:integration   # Playwright: adapter vs. local fixtures, network blocked
@@ -313,6 +385,72 @@ watch, uncomment the `schedule:` block in `monitor.yml`, and push it to the **de
 — GitHub only runs schedules from the default branch. Scheduled runs can start late or be
 skipped when GitHub is busy, and GitHub disables schedules in repositories with no activity
 for 60 days, so treat timings as approximate.
+
+## Troubleshooting
+
+| Symptom                                              | Cause and fix                                                                                                                                                          |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm error Missing script: "check"` (or `"monitor"`) | You are not in the project folder. `cd jobboard-monitor` first.                                                                                                        |
+| `browserType.launch: Executable doesn't exist`       | Chromium is not installed: `npx playwright install chromium`.                                                                                                          |
+| `zsh: no such file or directory: runId`              | A `<placeholder>` from the docs was typed literally; `<` means "read from a file" in the shell. Replace it with the real run ID.                                       |
+| A company fails with `UNEXPECTED_REDIRECT`           | That company's board redirects to its own careers site, which is not supported.                                                                                        |
+| A company fails with `NOT_FOUND`                     | The `boardToken` / `site` is wrong. Open `job-boards.greenhouse.io/<token>` or `jobs.lever.co/<site>` in a browser to check.                                           |
+| `STRUCTURE_CHANGED` on a board that used to work     | The provider changed its page layout. Look at the screenshot and HTML in `output/diagnostics/<runId>/`, run `npm run test:live`, and update the adapter's selectors.   |
+| `SUSPICIOUS_EMPTY`                                   | The page loaded but showed no jobs and no "no openings" message. Open the board in a browser; if it is genuinely empty with a new message, the adapter needs updating. |
+| `snapshot: ERROR … left untouched`                   | A snapshot file in `state/snapshots/` cannot be read. Fix it, or move it away to start a new baseline for that company.                                                |
+| Every job shows as `NEW`                             | This is the first scan for that company (a baseline), or its snapshot was deleted.                                                                                     |
+| A company shows `WARN … INCOMPLETE`                  | Rows were rejected or the count did not match; removals are not evaluated for that run. Read the warnings under the company.                                           |
+| `npx playwright show-trace` prints nothing           | Use `npx playwright show-trace --port 9323 <trace.zip>` and open `http://localhost:9323` in Chrome or Safari.                                                          |
+| Tests time out or Chromium takes minutes to start    | The machine is overloaded (check memory and swap); restart and re-run. Browser tests allow 60 s each.                                                                  |
+| `git push` rejected: "without `workflow` scope"      | Your GitHub CLI token cannot push workflow files: `gh auth refresh -h github.com -s workflow` while signed in as the right account, or push over SSH.                  |
+
+## Known limitations
+
+- **Providers:** only Greenhouse (`job-boards.greenhouse.io`) and Lever (`jobs.lever.co`) hosted
+  boards. Their EU hosts, other providers (Workday, Ashby, …), and companies using their own
+  careers sites are not supported.
+- **Unverified assumption:** no real Greenhouse board with zero openings was found, so the
+  `0 jobs` empty state is assumed from the observed `N jobs` format.
+- **No job descriptions or posting dates:** the list pages do not show them, and opening every
+  posting would multiply the load on job boards. `descriptionHash` is reserved for later.
+- **One malformed row blocks removal detection** for that board until it is fixed (by design:
+  safety over completeness).
+- **Sequential scanning:** large configurations take a while (about 1 s between requests per site).
+- **No lock file:** two local runs sharing the same `state/` folder are not coordinated
+  (the GitHub workflow prevents overlapping runs).
+- **Redirected pages load once** before being rejected, because Playwright cannot intercept
+  redirect follow-ups.
+- **`report --latest`** shows only the most recent scan; older runs are in `output/runs/`.
+- **Selectors can break** when a provider redesigns its pages. This is detected
+  (`STRUCTURE_CHANGED`, live tests) but needs a code update.
+
+## Roadmap
+
+Possible next steps, none started:
+
+- More providers (e.g. Ashby, Workday) — each only after inspecting real public pages.
+- Lever and Greenhouse EU hosts.
+- Optional job-description tracking (`descriptionHash`) where it is affordable.
+- `report --run <runId>` to show any past run.
+- Notifications (e.g. email or Slack) for new jobs matching your filters.
+- A lock file so concurrent local runs cannot overlap.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+1. Fork and create a branch; install with `npm ci` and `npx playwright install chromium`.
+2. Make the change with tests. `npm run check` must pass (lint, format, type check, unit and
+   integration tests) — CI runs the same steps.
+3. For a **new provider**: inspect real public pages first and record what you observed in
+   `docs/PROJECT_PLAN.md` §3; add **fictional** fixtures in the observed structure; add an
+   adapter in `src/adapters/<provider>/` with its own selectors and URL rules; reuse
+   `finishScan`; add integration tests for success, empty, changed layout, and HTTP failures.
+4. Never commit scraped job data, snapshots, or reports.
+5. Keep the responsible-use rules: public pages only, no login or bot-protection workarounds.
+
+Contributions are accepted under the project's license (below). Coding conventions are in
+`CLAUDE.md`.
 
 ## Responsible use
 

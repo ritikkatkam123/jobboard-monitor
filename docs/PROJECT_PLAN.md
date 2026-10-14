@@ -103,7 +103,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 
 ## 5. Phases
 
-**Status:** Phases 0–6 complete (2026-10-13). CI passed on its first GitHub run. Phase 7 (final docs) is next.
+**Status:** All phases (0–7) complete (2026-10-13). CI passed on its first GitHub run.
 
 | Phase | Scope                                                                                                                                             | Exit criteria                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -114,75 +114,11 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 | **4** | Reports: CSV (formula-injection safe), HTML (escaped), `report --latest`, demo-vs-live labelling                                                  | Tests 18, 19, 25                                                   |
 | **5** | Lever adapter (after inspecting real pages)                                                                                                       | Mocked integration tests                                           |
 | **6** | GitHub Actions CI + optional monitoring workflow with state branch                                                                                | CI green on PR                                                     |
-| 7     | README, ARCHITECTURE, TEST_STRATEGY, DECISIONS, badges                                                                                            | Docs match real commands                                           |
+| **7** | README, ARCHITECTURE, TEST_STRATEGY, DECISIONS, badges                                                                                            | Docs match real commands                                           |
 
-## 6. Design decisions (summary — full log in `DECISIONS.md` from Phase 7)
+## 6. Design decisions
 
-1. **Config holds board tokens, not URLs.** The adapter builds
-   `https://job-boards.greenhouse.io/<token>` itself. This removes arbitrary-URL and
-   private-network (SSRF) risk at the source.
-2. **Identity:** `greenhouse:<token>:<jobId>` using the numeric ID in the job URL
-   path; fallback to a hash of the canonical URL. Never title-based.
-3. **Completeness is explicit.** A scan is `complete` only when every page was
-   traversed, the row count equals the board's own count header, and no row was
-   rejected. Phase 2 will only use complete scans for removal decisions.
-4. **Empty is not success by default.** Zero rows is valid only when the count
-   header itself reports zero. Zero rows with a missing header or a non-zero header
-   is `STRUCTURE_CHANGED` / `SUSPICIOUS_EMPTY`.
-5. **Off-site redirects fail.** If the board redirects outside allowed hosts, the
-   result is `UNEXPECTED_REDIRECT` and nothing is extracted.
-6. **Polite by default.** Sequential companies, configurable delay between pages
-   (default 1000 ms), images/fonts/media blocked.
-7. **Filters never change what is collected** — they only change what is reported.
-   (Phase 2 snapshots will store the unfiltered set.)
-8. **Fixtures are fictional.** They copy the observed _structure_ only; no live
-   listings are committed.
-9. **One snapshot file per company** (`state/snapshots/<id>.json`), validated with Zod on
-   read, so one company's failure or corruption cannot affect another's.
-10. **Only complete successful scans advance a snapshot.** Incomplete scans still report
-    visible NEW/UPDATED but are not saved, so they may be re-reported next run — a
-    duplicate alert is preferred over corrupted history.
-11. **Removal = two consecutive complete absences.** Failed/incomplete scans neither
-    increment nor reset the count.
-12. **Corrupt state is never overwritten.** The run reports ERROR and exits 1; the user
-    decides whether to repair or rebaseline.
-13. **`state/` is separate from `output/`** so the scheduled workflow (Phase 6) can persist
-    state on its own branch without committing reports.
-14. **Retries are per page and only for transient failures** (timeouts, network errors, 408,
-    5xx). 401/403/404, redirects and structure changes are never retried.
-15. **429 is waited out at most once**, and only when `Retry-After` is present and ≤ 60 s.
-    Anything else means the site wants us to stop, so the company is `BLOCKED`.
-16. **One `HostThrottle` per run** enforces spacing per host across companies. Concurrency
-    stays at 1 (sequential companies); parallelism was not needed for the target scale.
-17. **Tab reset before retry.** Found by test: a timed-out navigation left its request
-    pending and the retry failed with `net::ERR_ABORTED`; loading `about:blank` first fixes it.
-18. **Traces are opt-in (`--trace`)** and kept only for failed companies, via trace chunks.
-19. **One folder per run** (`output/runs/<runId>/`) with `run.json`, `jobs.csv`, and
-    `report.html`; `output/latest.json` is written last so `report --latest` never sees a
-    half-written run. Run JSON `schemaVersion` went from 1 to 2.
-20. **One CSV table** (listings + change column, then removals) rather than several files:
-    easiest to filter in a spreadsheet.
-21. **HTML is hand-escaped with no template library**: one `escapeHtml` for all text, https-only
-    links, no scripts, and a CSP as a second layer. Tested with hostile input.
-22. **An offline `demo` command** runs the real pipeline against fictional pages. It gives
-    interviewers a no-network way to try the tool and is the source of every README example,
-    so no output in the docs is invented. Demo state/output is isolated in `output/demo/`.
-23. **Lever completeness without a count:** a scan is complete when the postings container
-    is present, either postings or Lever's explicit empty message is found, and no row is
-    rejected. Empty without the message is `SUSPICIOUS_EMPTY`.
-24. **Shared `finishScan`** extracted once there were two adapters, so validation, status,
-    and completeness rules cannot drift between providers.
-25. **Lever-only fields** (workplace type, commitment) fill `workplaceType`/`employmentType`;
-    Greenhouse leaves them `null` because its list page does not show them.
-26. **Snapshots persist on an orphan `monitor-state` branch**, not in runner storage or caches
-    (neither is durable). Only `state/` is committed there; reports are artifacts. Tested
-    locally across three simulated runners against a bare repository.
-27. **Monitoring is manual-only until the user opts in** to a schedule, per the spec; CI has
-    read-only permissions and the monitor job has `contents: write` only to push state.
-28. **License: PolyForm Noncommercial 1.0.0** (changed from MIT on 2026-10-13 at the owner's
-    request): free noncommercial use and modification, no selling or other commercial use.
-    The MIT-licensed commits published briefly before the change remain MIT for anyone who
-    obtained them then.
+Moved to [DECISIONS.md](DECISIONS.md) in Phase 7, with the reason and trade-off for each.
 
 ## 7. Risks
 
