@@ -323,4 +323,11 @@ and images/fonts/media are not downloaded.
 
 ## License
 
-MIT
+**[PolyForm Noncommercial License 1.0.0](LICENSE)**: you may use, copy, and modify this
+project for any **noncommercial** purpose, such as personal job searching, learning, research,
+teaching, or use by non-profits, schools, and public institutions. **Commercial use, including
+selling it or offering it as a paid service, is not permitted** without the author's permission.
+
+This makes the project _source-available_ rather than OSI "open source". Copies must keep the
+`Required Notice` line in [LICENSE](LICENSE). For commercial licensing, contact the author via
+[GitHub](https://github.com/ritikkatkam123).

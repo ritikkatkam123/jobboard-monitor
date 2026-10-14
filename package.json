@@ -14,7 +14,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test"
   },
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "description": "CLI that monitors public company career boards with Playwright and tracks job posting changes.",
   "dependencies": {
     "commander": "^15.0.0",

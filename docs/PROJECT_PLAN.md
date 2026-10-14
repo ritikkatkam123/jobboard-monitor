@@ -179,6 +179,10 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
     locally across three simulated runners against a bare repository.
 27. **Monitoring is manual-only until the user opts in** to a schedule, per the spec; CI has
     read-only permissions and the monitor job has `contents: write` only to push state.
+28. **License: PolyForm Noncommercial 1.0.0** (changed from MIT on 2026-10-13 at the owner's
+    request): free noncommercial use and modification, no selling or other commercial use.
+    The MIT-licensed commits published briefly before the change remain MIT for anyone who
+    obtained them then.
 
 ## 7. Risks
 
