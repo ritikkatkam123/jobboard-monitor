@@ -103,7 +103,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 
 ## 5. Phases
 
-**Status:** Phases 0–5 complete (2026-10-13). Phase 6 is next.
+**Status:** Phases 0–5 complete; Phase 6 workflows written and tested locally (2026-10-13), pending first GitHub run.
 
 | Phase | Scope                                                                                                                                             | Exit criteria                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -113,7 +113,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 | **3** | Reliability: bounded retries/backoff for transient errors, 429 + `Retry-After`, per-host spacing/concurrency, traces on failure                   | Tests 14, 15                                                       |
 | **4** | Reports: CSV (formula-injection safe), HTML (escaped), `report --latest`, demo-vs-live labelling                                                  | Tests 18, 19, 25                                                   |
 | **5** | Lever adapter (after inspecting real pages)                                                                                                       | Mocked integration tests                                           |
-| 6     | GitHub Actions CI + optional monitoring workflow with state branch                                                                                | CI green on PR                                                     |
+| **6** | GitHub Actions CI + optional monitoring workflow with state branch                                                                                | CI green on PR                                                     |
 | 7     | README, ARCHITECTURE, TEST_STRATEGY, DECISIONS, badges                                                                                            | Docs match real commands                                           |
 
 ## 6. Design decisions (summary — full log in `DECISIONS.md` from Phase 7)
@@ -174,6 +174,11 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
     and completeness rules cannot drift between providers.
 25. **Lever-only fields** (workplace type, commitment) fill `workplaceType`/`employmentType`;
     Greenhouse leaves them `null` because its list page does not show them.
+26. **Snapshots persist on an orphan `monitor-state` branch**, not in runner storage or caches
+    (neither is durable). Only `state/` is committed there; reports are artifacts. Tested
+    locally across three simulated runners against a bare repository.
+27. **Monitoring is manual-only until the user opts in** to a schedule, per the spec; CI has
+    read-only permissions and the monitor job has `contents: write` only to push state.
 
 ## 7. Risks
 

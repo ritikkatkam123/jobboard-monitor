@@ -1,8 +1,7 @@
 # JobBoard Monitor
 
-> **Status: Phase 5 of 7 (work in progress).** This README documents only what is
-> implemented today. CI is planned —
-> see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
+> **Status: Phase 6 of 7 (work in progress).** This README documents only what is
+> implemented today — see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
 A TypeScript command-line tool that uses Playwright to collect **public** job postings
 from company career boards, normalize them into one validated format, and track which
@@ -270,8 +269,48 @@ npm run test:unit          # Vitest: pure logic
 npm run test:integration   # Playwright: adapter vs. local fixtures, network blocked
 npm test                   # both
 npm run test:live          # OPT-IN: real Greenhouse + Lever boards (network required)
+                           # the Lever test also compares results with Lever's official feed
 npm run check              # lint + format + typecheck + unit + integration
 ```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request (read-only permissions):
+
+1. `npm ci` from the lockfile
+2. ESLint, Prettier check, TypeScript type check
+3. Vitest unit tests
+4. Chromium install, then the deterministic Playwright integration tests (no network)
+5. Uploads the Playwright HTML report, plus traces and screenshots when tests fail
+
+Live-site smoke tests never run in CI. Playwright retries are 0, so a failure is a failure.
+
+## Scheduled monitoring
+
+`.github/workflows/monitor.yml` scans the boards in `config/companies.json` on GitHub
+Actions. It is **manual-only by default** (Actions tab → _Monitor job boards_ → _Run
+workflow_, with optional keyword and location filters).
+
+**Where snapshots live.** Runners are wiped after every job and caches can be evicted, so
+neither is used as history. Snapshots are committed to a separate **`monitor-state`** branch
+that shares no history with the source code:
+
+- the run restores `state/` from that branch, scans, then commits and pushes only `state/`
+  back to it (`scripts/state-branch.sh`);
+- the first run creates the branch;
+- the source branch is never modified, and generated reports are **not** committed — they are
+  uploaded as a run artifact (kept 30 days) and summarized on the run page;
+- runs never overlap (`concurrency: monitor`), so two runs cannot write snapshots at once;
+- if some companies fail, the others' snapshots are still saved, then the run is marked failed.
+
+The workflow needs `contents: write` only for that push. Do not merge `monitor-state` into
+your main branch.
+
+**To enable the schedule:** check `config/companies.json` lists boards you really want to
+watch, uncomment the `schedule:` block in `monitor.yml`, and push it to the **default branch**
+— GitHub only runs schedules from the default branch. Scheduled runs can start late or be
+skipped when GitHub is busy, and GitHub disables schedules in repositories with no activity
+for 60 days, so treat timings as approximate.
 
 ## Responsible use
 

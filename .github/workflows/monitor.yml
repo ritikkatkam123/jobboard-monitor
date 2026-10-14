@@ -1,0 +1,97 @@
+name: Monitor job boards
+
+# Manual runs only by default. To enable scheduled runs, first make sure
+# config/companies.json lists boards you actually want to watch, then uncomment
+# the `schedule` block below and push it to the DEFAULT branch (GitHub only runs
+# schedules defined there). See README "Scheduled monitoring".
+on:
+  workflow_dispatch:
+    inputs:
+      keyword:
+        description: 'Optional keyword filter for the report (e.g. "engineer")'
+        required: false
+        default: ''
+      location:
+        description: 'Optional location filter for the report (e.g. "Texas")'
+        required: false
+        default: ''
+  # schedule:
+  #   # 13:17 UTC daily. GitHub may start scheduled runs late, or skip them under load.
+  #   - cron: '17 13 * * *'
+
+# `contents: write` is needed only to push snapshots to the monitor-state branch.
+# The source branch is never modified by this workflow.
+permissions:
+  contents: write
+
+# Never let two monitoring runs write the same snapshots at once.
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (from lockfile)
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Kept outside the source checkout, in the runner's temp folder.
+      - name: Restore snapshots from the monitor-state branch
+        run: |
+          echo "STATE_DIR=$RUNNER_TEMP/monitor-state" >> "$GITHUB_ENV"
+          scripts/state-branch.sh restore "$RUNNER_TEMP/monitor-state"
+
+      - name: Scan configured boards
+        id: scan
+        env:
+          KEYWORD: ${{ inputs.keyword }}
+          LOCATION: ${{ inputs.location }}
+        run: |
+          args=(scan --log-level warn --state-dir "$STATE_DIR/state" --output-dir output)
+          if [ -n "$KEYWORD" ]; then args+=(--keyword "$KEYWORD"); fi
+          if [ -n "$LOCATION" ]; then args+=(--location "$LOCATION"); fi
+          # Exit code 1 means some company failed; keep going so successful companies'
+          # snapshots and the report are still saved. The job fails at the end instead.
+          set +e
+          npm run --silent monitor -- "${args[@]}" | tee scan-summary.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo '## Scan summary'
+            echo '```'
+            cat scan-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ge 2 ]; then exit "$code"; fi
+
+      - name: Save snapshots to the monitor-state branch
+        run: scripts/state-branch.sh save "$STATE_DIR" "Snapshots from run ${{ github.run_id }}"
+
+      - name: Upload reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitor-reports-${{ github.run_id }}
+          path: output/
+          retention-days: 30
+
+      - name: Fail if any company failed or was blocked
+        if: ${{ steps.scan.outputs.exit_code != '0' }}
+        run: |
+          echo "At least one company failed or was blocked (exit code ${{ steps.scan.outputs.exit_code }}). See the report artifact."
+          exit 1
