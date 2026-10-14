@@ -103,7 +103,7 @@ config file ─▶ validate (Zod) ─▶ for each company (sequential)
 
 ## 5. Phases
 
-**Status:** Phases 0–5 complete; Phase 6 workflows written and tested locally (2026-10-13), pending first GitHub run.
+**Status:** Phases 0–6 complete (2026-10-13). CI passed on its first GitHub run. Phase 7 (final docs) is next.
 
 | Phase | Scope                                                                                                                                             | Exit criteria                                                      |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |

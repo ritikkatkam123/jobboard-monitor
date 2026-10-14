@@ -1,6 +1,8 @@
 # JobBoard Monitor
 
-> **Status: Phase 6 of 7 (work in progress).** This README documents only what is
+[![CI](https://github.com/ritikkatkam123/jobboard-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/ritikkatkam123/jobboard-monitor/actions/workflows/ci.yml)
+
+> **Status: Phase 6 of 7 complete; final documentation pass pending.** This README documents only what is
 > implemented today — see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
 A TypeScript command-line tool that uses Playwright to collect **public** job postings
